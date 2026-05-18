@@ -5,6 +5,7 @@ import 'article_detail_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'cache_service.dart';
 
+
 void main() {
   runApp(NewsApp());
 }
@@ -26,7 +27,7 @@ class _NewsAppState extends State<NewsApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Tesla News Malaysia',
+      title: 'News App',
       theme: ThemeData.light(),
       darkTheme: ThemeData.dark(),
       themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
@@ -50,9 +51,7 @@ class _NewsHomePageState extends State<NewsHomePage> {
   final CacheService cacheService = CacheService();
 
   List<Article> articles = [];
-  int page = 1;
   bool isLoading = false;
-  bool hasMore = true;
   bool isOffline = false;
 
   @override
@@ -61,62 +60,44 @@ class _NewsHomePageState extends State<NewsHomePage> {
     loadNews();
   }
 
-
+  // ✅ FIXED LOAD (NO pagination, simple backend call)
   Future<void> loadNews() async {
     setState(() {
       isLoading = true;
     });
 
     try {
-      final newArticles =
-      await api.fetchTeslaMalaysiaNews(page: page);
+      final newArticles = await api.fetchTopHeadlines();
 
-
-      if (page == 1) {
-        await cacheService.saveArticles(newArticles);
-      }
+      await cacheService.saveArticles(newArticles);
 
       setState(() {
-        page++;
+        articles = newArticles;
         isLoading = false;
         isOffline = false;
-
-        if (newArticles.isEmpty) {
-          hasMore = false;
-        } else {
-          articles.addAll(newArticles);
-        }
       });
     } catch (e) {
-
       final cached = await cacheService.getCachedArticles();
 
       setState(() {
         articles = cached;
         isLoading = false;
-        hasMore = false;
         isOffline = true;
       });
     }
   }
 
-  void search(String query) async {
-    final result = await api.searchNews(query);
-
+  // ✅ SIMPLE SEARCH (FILTER LOCALLY)
+  void search(String query) {
     setState(() {
-      articles = result;
-      hasMore = false;
-      isOffline = false;
+      articles = articles
+          .where((a) =>
+          a.title.toLowerCase().contains(query.toLowerCase()))
+          .toList();
     });
   }
 
   void resetNews() {
-    setState(() {
-      articles.clear();
-      page = 1;
-      hasMore = true;
-    });
-
     loadNews();
   }
 
@@ -124,7 +105,7 @@ class _NewsHomePageState extends State<NewsHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Tesla News (Malaysia)'),
+        title: Text('News App'),
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
@@ -132,7 +113,6 @@ class _NewsHomePageState extends State<NewsHomePage> {
           )
         ],
       ),
-
 
       floatingActionButton: FloatingActionButton(
         onPressed: widget.onToggleTheme,
@@ -142,30 +122,30 @@ class _NewsHomePageState extends State<NewsHomePage> {
       body: Column(
         children: [
 
-
+          // 🔴 OFFLINE BANNER
           if (isOffline)
             Container(
               width: double.infinity,
               color: Colors.red,
-              padding: EdgeInsets.all(8),
+              padding: EdgeInsets.all(10),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.wifi_off, color: Colors.white),
                   SizedBox(width: 8),
                   Text(
-                    "Offline Mode - Showing cached data",
+                    "Offline Mode - Cached Data",
                     style: TextStyle(color: Colors.white),
                   ),
                 ],
               ),
             ),
 
-
+          // 🔍 SEARCH
           Padding(
             padding: EdgeInsets.all(8),
             child: TextField(
-              onSubmitted: search,
+              onChanged: search,
               decoration: InputDecoration(
                 hintText: 'Search news...',
                 border: OutlineInputBorder(),
@@ -174,43 +154,20 @@ class _NewsHomePageState extends State<NewsHomePage> {
             ),
           ),
 
-
+          // 📰 LIST
           Expanded(
-            child: ListView.builder(
-              itemCount: articles.length + 1,
+            child: isLoading
+                ? Center(child: CircularProgressIndicator())
+                : ListView.builder(
+              itemCount: articles.length,
               itemBuilder: (context, index) {
-
-
-                if (index == articles.length) {
-                  if (!hasMore) return SizedBox();
-
-                  return Padding(
-                    padding: EdgeInsets.all(16),
-                    child: ElevatedButton(
-                      onPressed: isLoading ? null : loadNews,
-                      child: isLoading
-                          ? SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                          : Text("Load More"),
-                    ),
-                  );
-                }
-
                 final article = articles[index];
 
                 return Card(
                   margin: EdgeInsets.all(8),
                   child: ListTile(
                     leading: CachedNetworkImage(
-                      imageUrl: article.urlToImage.isNotEmpty
-                          ? article.urlToImage
-                          : 'https://via.placeholder.com/150',
+                      imageUrl: article.urlToImage,
                       width: 100,
                       fit: BoxFit.cover,
                       placeholder: (context, url) =>
